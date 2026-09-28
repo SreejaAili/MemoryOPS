@@ -1,0 +1,25 @@
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+
+# Python / Backend
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Databases & Environment
+data/*.db
+data/*.db-journal
+.env
+.env.local
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
