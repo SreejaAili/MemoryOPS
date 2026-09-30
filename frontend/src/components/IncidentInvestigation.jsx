@@ -13,9 +13,11 @@ import {
   Search,
   BookOpen,
   ArrowRight,
-  HelpCircle
+  HelpCircle,
+  XCircle,
+  RotateCcw
 } from 'lucide-react';
-import { fetchIncidentById, analyzeIncident, resolveIncident } from '../api';
+import { fetchIncidentById, analyzeIncident, resolveIncident, retainIncident } from '../api';
 
 export default function IncidentInvestigation({ incidentId, incidents, onSelectIncident }) {
   const [selectedId, setSelectedId] = useState(incidentId || (incidents.length > 0 ? incidents[0].id : ''));
@@ -28,7 +30,12 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
   const [showResolveModal, setShowResolveModal] = useState(false);
   const [rootCauseInput, setRootCauseInput] = useState('');
   const [resolutionInput, setResolutionInput] = useState('');
+  const [postMortemInput, setPostMortemInput] = useState('');
   const [resolving, setResolving] = useState(false);
+
+  // Retention retry state
+  const [retaining, setRetaining] = useState(false);
+  const [retainMessage, setRetainMessage] = useState(null);
 
   useEffect(() => {
     if (incidentId) setSelectedId(incidentId);
@@ -43,6 +50,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
   const loadAndAnalyze = async (id) => {
     setLoading(true);
     setError(null);
+    setRetainMessage(null);
     try {
       const inc = await fetchIncidentById(id);
       setIncident(inc);
@@ -66,18 +74,52 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
       const updated = await resolveIncident(selectedId, {
         root_cause: rootCauseInput.trim() || undefined,
         resolution: resolutionInput.trim(),
+        post_mortem: postMortemInput.trim() || undefined,
         outcome: 'Resolved',
       });
       setIncident(updated);
       setShowResolveModal(false);
       setRootCauseInput('');
       setResolutionInput('');
+      setPostMortemInput('');
       loadAndAnalyze(selectedId);
     } catch (err) {
       alert(`Resolution failed: ${err.message}`);
     } finally {
       setResolving(false);
     }
+  };
+
+  const handleRetryRetention = async () => {
+    if (!selectedId) return;
+    setRetaining(true);
+    setRetainMessage(null);
+    try {
+      const res = await retainIncident(selectedId);
+      if (res.success) {
+        setRetainMessage({ type: 'success', text: '✓ Successfully retained memory in Hindsight!' });
+      } else {
+        setRetainMessage({ type: 'error', text: `⚠ Retention failed: ${res.message}` });
+      }
+      const inc = await fetchIncidentById(selectedId);
+      setIncident(inc);
+    } catch (err) {
+      setRetainMessage({ type: 'error', text: `⚠ Retention retry error: ${err.message}` });
+    } finally {
+      setRetaining(false);
+    }
+  };
+
+  const renderEvidenceItem = (item, type) => {
+    if (!item) return null;
+    if (typeof item === 'string') {
+      return item;
+    }
+    const incId = item.incident_id ? `[${item.incident_id}]` : '';
+    const svc = item.service ? `(${item.service})` : '';
+    const content = type === 'rc' ? item.root_cause : item.resolution;
+    const prefix = [incId, svc].filter(Boolean).join(' ');
+    return prefix ? `${prefix} — ${content}` : content;
   };
 
   return (
@@ -92,7 +134,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
               setSelectedId(e.target.value);
               if (onSelectIncident) onSelectIncident(e.target.value);
             }}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500 w-full md:w-80"
+            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500 w-full md:w-96"
           >
             {incidents.map((inc) => (
               <option key={inc.id} value={inc.id}>
@@ -133,7 +175,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
         </div>
       ) : investigation && incident ? (
         <div className="space-y-6">
-          {/* Explicit Pipeline Banner */}
+          {/* Pipeline Progress Navigation */}
           <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 overflow-x-auto">
             <div className="flex items-center justify-between min-w-[800px] text-[11px] font-mono font-semibold">
               <div className="flex items-center gap-2 text-indigo-400 bg-indigo-950/60 px-3 py-1.5 rounded border border-indigo-800/50">
@@ -217,73 +259,192 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                 </div>
               </div>
             </div>
+
+            {/* RESOLVED INCIDENT RETENTION STATUS BANNER */}
+            {incident.outcome.toLowerCase() === 'resolved' && (
+              <div className="pt-3 border-t border-slate-800/80 flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  {incident.memory_retained ? (
+                    <span className="text-emerald-400 font-semibold flex items-center gap-1.5 bg-emerald-950/60 px-3 py-1 rounded border border-emerald-800/60">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Verified: Retained in Hindsight Memory
+                    </span>
+                  ) : (
+                    <span className="text-amber-400 font-semibold flex items-center gap-1.5 bg-amber-950/60 px-3 py-1 rounded border border-amber-800/60">
+                      <AlertTriangle className="w-4 h-4 text-amber-400" /> Pending Retention: Memory not yet confirmed in Hindsight
+                    </span>
+                  )}
+                  {retainMessage && (
+                    <span className={`text-xs px-2 py-0.5 rounded font-mono ${
+                      retainMessage.type === 'success' ? 'text-emerald-300 bg-emerald-950/80' : 'text-rose-300 bg-rose-950/80'
+                    }`}>
+                      {retainMessage.text}
+                    </span>
+                  )}
+                </div>
+
+                {!incident.memory_retained && (
+                  <button
+                    onClick={handleRetryRetention}
+                    disabled={retaining}
+                    className="bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <RotateCcw className={`w-3.5 h-3.5 ${retaining ? 'animate-spin' : ''}`} />
+                    {retaining ? 'Retaining...' : 'Retry Retention in Hindsight'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-center">
             <ArrowDown className="w-5 h-5 text-indigo-400 animate-bounce" />
           </div>
 
-          {/* STEP 2 & 3: HINDSIGHT RECALL & SIMILAR HISTORICAL INCIDENTS */}
-          <div className="bg-slate-900 border border-purple-900/40 rounded-xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono font-bold text-purple-400 bg-purple-950 px-2 py-0.5 rounded border border-purple-800/50">
-                  STEP 2 & 3
-                </span>
-                <h3 className="text-base font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <Brain className="w-5 h-5 text-purple-400" /> HINDSIGHT RECALL & SIMILAR HISTORICAL INCIDENTS
-                </h3>
-              </div>
-              <span className="text-xs text-purple-300 bg-purple-950 px-3 py-1 rounded-full border border-purple-800 font-mono">
-                {investigation.recall_status === 'failed' || investigation.recall_source === 'hindsight_error' || investigation.recall_source === 'sqlite_fallback'
-                  ? 'Hindsight Offline / Service Failure'
-                  : investigation.recall_status === 'empty' || investigation.similar_historical_incidents?.length === 0
-                  ? '0 Historical Memories Recalled'
-                  : `${investigation.similar_historical_incidents?.length || 0} Historical Memories Recalled`}
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-400">
-              {investigation.recall_status === 'failed' || investigation.recall_source === 'hindsight_error' || investigation.recall_source === 'sqlite_fallback'
-                ? 'Hindsight memory service was unconfigured or encountered an API/network error during recall.'
-                : investigation.recall_status === 'empty' || investigation.similar_historical_incidents?.length === 0
-                ? 'Hindsight memory recall completed successfully, but no matching past incident memories were found for this query.'
-                : 'Hindsight uses semantic vector search across persistent memory banks to retrieve relevant past incidents even when wording is not identical.'}
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {investigation.similar_historical_incidents?.map((mem, idx) => (
-                <div key={idx} className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-2">
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-                    <span className="font-mono text-xs text-purple-400 font-bold">
-                      {mem.incident_id || `MEMORY-${idx + 1}`}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">{mem.service || 'Historical Service'}</span>
+          {/* EXPLICIT MEMORY STATUS BANNER (STATE 1, 2, 3, 4) */}
+          <div className="space-y-4">
+            {investigation.memory_status === 'ok' && (
+              <div className="bg-emerald-950/50 border border-emerald-800/60 rounded-xl p-4 flex items-center justify-between shadow-sm text-emerald-200">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
+                  <div>
+                    <h3 className="text-sm font-bold text-emerald-300">✓ Historical Memory Used (Hindsight Vector Memory)</h3>
+                    <p className="text-xs text-emerald-200/80">
+                      {investigation.similar_historical_incidents?.length || 0} unique, non-self relevant historical incident memories recalled from Hindsight vector memory bank.
+                    </p>
                   </div>
-
-                  <p className="text-xs text-slate-200 font-mono bg-slate-900 p-2 rounded">
-                    <strong className="text-slate-400 block text-[10px] uppercase">Error:</strong> {mem.error || mem.raw_text?.slice(0, 100)}
-                  </p>
-
-                  {mem.root_cause && (
-                    <p className="text-xs text-amber-200/90 bg-amber-950/20 border border-amber-800/30 p-2 rounded">
-                      <strong className="text-amber-400 block text-[10px] uppercase">Previous Root Cause:</strong> {mem.root_cause}
-                    </p>
-                  )}
-
-                  {mem.resolution && (
-                    <p className="text-xs text-emerald-200/90 bg-emerald-950/20 border border-emerald-800/30 p-2 rounded">
-                      <strong className="text-emerald-400 block text-[10px] uppercase">Previous Successful Resolution:</strong> {mem.resolution}
-                    </p>
-                  )}
                 </div>
-              ))}
+                <span className="text-[11px] font-mono bg-emerald-900/80 text-emerald-200 px-2.5 py-1 rounded border border-emerald-700/60">
+                  recall_source: hindsight
+                </span>
+              </div>
+            )}
 
-              {investigation.similar_historical_incidents?.length === 0 && (
-                <div className="col-span-2 py-8 text-center text-xs text-slate-500 bg-slate-950 rounded-lg border border-slate-800">
-                  No matching historical memories found in Hindsight for this incident query.
+            {investigation.memory_status === 'sqlite_fallback' && (
+              <div className="bg-cyan-950/50 border border-cyan-800/60 rounded-xl p-4 flex items-center justify-between shadow-sm text-cyan-200">
+                <div className="flex items-center gap-3">
+                  <Database className="w-6 h-6 text-cyan-400 shrink-0" />
+                  <div>
+                    <h3 className="text-sm font-bold text-cyan-300">🗄 Historical Memory Used (Database Fallback)</h3>
+                    <p className="text-xs text-cyan-200/80">
+                      Retrieved {investigation.similar_historical_incidents?.length || 0} relevant resolved incident records directly from the database fallback matching target service or error signature.
+                    </p>
+                  </div>
                 </div>
-              )}
+                <span className="text-[11px] font-mono bg-cyan-900/80 text-cyan-200 px-2.5 py-1 rounded border border-cyan-700/60">
+                  recall_source: sqlite_fallback
+                </span>
+              </div>
+            )}
+
+            {investigation.memory_status === 'empty' && (
+              <div className="bg-slate-900 border border-blue-800/60 rounded-xl p-4 flex items-center justify-between shadow-sm text-blue-200">
+                <div className="flex items-center gap-3">
+                  <Search className="w-6 h-6 text-blue-400 shrink-0" />
+                  <div>
+                    <h3 className="text-sm font-bold text-blue-300">○ No Unique Prior Historical Match</h3>
+                    <p className="text-xs text-blue-200/80">
+                      Searched previous incidents but found no distinct historical prior precedents for this service/error signature.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[11px] font-mono bg-blue-950 text-blue-300 px-2.5 py-1 rounded border border-blue-800/60">
+                  memory_status: empty
+                </span>
+              </div>
+            )}
+
+            {investigation.memory_status === 'unavailable' && (
+              <div className="bg-amber-950/50 border border-amber-800/60 rounded-xl p-4 flex items-center justify-between shadow-sm text-amber-200">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="w-6 h-6 text-amber-400 shrink-0" />
+                  <div>
+                    <h3 className="text-sm font-bold text-amber-300">⚠ Historical Memory Unavailable</h3>
+                    <p className="text-xs text-amber-200/80">
+                      This investigation was performed without Hindsight historical vector memory because Hindsight was unavailable or unconfigured.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[11px] font-mono bg-amber-900/80 text-amber-200 px-2.5 py-1 rounded border border-amber-700/60">
+                  memory_status: unavailable
+                </span>
+              </div>
+            )}
+
+            {/* STEP 2 & 3: RECALLED HISTORICAL INCIDENT MEMORIES */}
+            <div className="bg-slate-900 border border-purple-900/40 rounded-xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold text-purple-400 bg-purple-950 px-2 py-0.5 rounded border border-purple-800/50">
+                    STEP 2 & 3
+                  </span>
+                  <h3 className="text-base font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <Brain className="w-5 h-5 text-purple-400" /> HISTORICAL INCIDENT MEMORIES & EVIDENCE
+                  </h3>
+                </div>
+                <span className="text-xs text-purple-300 bg-purple-950 px-3 py-1 rounded-full border border-purple-800 font-mono">
+                  {investigation.similar_historical_incidents?.length > 0
+                    ? `${investigation.similar_historical_incidents.length} Relevant Matches`
+                    : investigation.memory_status === 'empty'
+                    ? '0 Matches Found'
+                    : 'Memory Unavailable'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {investigation.similar_historical_incidents?.map((mem, idx) => (
+                  <div key={idx} className="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-2 shadow-sm">
+                    <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                      <span className="font-mono text-xs text-purple-400 font-bold flex items-center gap-1.5">
+                        <BookOpen className="w-3.5 h-3.5 text-purple-400" /> {mem.incident_id || `MEMORY-${idx + 1}`}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-cyan-300 font-mono bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">
+                          {mem.source === 'sqlite_fallback' ? 'Database Fallback' : 'Hindsight Vector'}
+                        </span>
+                        <span className="text-[10px] text-slate-300 font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                          {mem.service || 'Service'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-200 font-mono bg-slate-900/80 p-2 rounded">
+                      <strong className="text-slate-400 block text-[10px] uppercase">Error / Symptoms:</strong> {mem.error || mem.symptoms || mem.raw_text?.slice(0, 100)}
+                    </p>
+
+                    {mem.root_cause && (
+                      <p className="text-xs text-amber-200/90 bg-amber-950/20 border border-amber-800/30 p-2 rounded">
+                        <strong className="text-amber-400 block text-[10px] uppercase">Root Cause:</strong> {mem.root_cause}
+                      </p>
+                    )}
+
+                    {mem.resolution && (
+                      <p className="text-xs text-emerald-200/90 bg-emerald-950/20 border border-emerald-800/30 p-2 rounded">
+                        <strong className="text-emerald-400 block text-[10px] uppercase">Resolution Steps:</strong> {mem.resolution}
+                      </p>
+                    )}
+
+                    {mem.post_mortem && (
+                      <p className="text-xs text-cyan-200/90 bg-cyan-950/20 border border-cyan-800/30 p-2 rounded">
+                        <strong className="text-cyan-400 block text-[10px] uppercase">Post-mortem Takeaways:</strong> {mem.post_mortem}
+                      </p>
+                    )}
+
+                    {mem.relevance && (
+                      <p className="text-[11px] text-indigo-300/90 bg-indigo-950/30 border border-indigo-800/30 p-2 rounded italic">
+                        <strong className="text-indigo-400 not-italic block text-[10px] uppercase">Why It Mattered / Relevance:</strong> {mem.relevance}
+                      </p>
+                    )}
+                  </div>
+                ))}
+
+                {(!investigation.similar_historical_incidents || investigation.similar_historical_incidents.length === 0) && (
+                  <div className="col-span-2 py-8 text-center text-xs text-slate-400 bg-slate-950 rounded-lg border border-slate-800">
+                    {investigation.memory_status === 'unavailable'
+                      ? 'Historical memory bank was unavailable during this investigation.'
+                      : 'No unique prior historical memories found in Hindsight or local database for this incident.'}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -291,7 +452,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
             <ArrowDown className="w-5 h-5 text-purple-400 animate-bounce" />
           </div>
 
-          {/* STEP 4: PREVIOUS ROOT CAUSE & PREVIOUS SUCCESSFUL RESOLUTION */}
+          {/* STEP 4: PREVIOUS ROOT CAUSES & RESOLUTIONS */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-slate-900 border border-amber-900/40 rounded-xl p-5 shadow-sm space-y-3">
               <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
@@ -303,12 +464,12 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
               <div className="space-y-2">
                 {investigation.previous_root_causes?.length > 0 ? (
                   investigation.previous_root_causes.map((rc, idx) => (
-                    <div key={idx} className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs text-amber-200 leading-relaxed">
-                      • {rc}
+                    <div key={idx} className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs text-amber-200 leading-relaxed font-mono">
+                      • {renderEvidenceItem(rc, 'rc')}
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-slate-500 py-4 text-center">No prior root cause records.</p>
+                  <p className="text-xs text-slate-500 py-4 text-center">No prior distinct root cause records retrieved.</p>
                 )}
               </div>
             </div>
@@ -323,12 +484,12 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
               <div className="space-y-2">
                 {investigation.previous_resolutions?.length > 0 ? (
                   investigation.previous_resolutions.map((res, idx) => (
-                    <div key={idx} className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs text-emerald-200 leading-relaxed">
-                      ✓ {res}
+                    <div key={idx} className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs text-emerald-200 leading-relaxed font-mono">
+                      ✓ {renderEvidenceItem(res, 'res')}
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-slate-500 py-4 text-center">No prior resolution records.</p>
+                  <p className="text-xs text-slate-500 py-4 text-center">No prior distinct resolution records retrieved.</p>
                 )}
               </div>
             </div>
@@ -349,13 +510,20 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                   <Cpu className="w-5 h-5 text-indigo-400" /> GROQ AI DIAGNOSIS & RECOMMENDED REMEDIATION
                 </h3>
               </div>
-              <span className={`text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider ${
-                investigation.ai_analysis?.confidence === 'high' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
-                investigation.ai_analysis?.confidence === 'medium' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
-                'bg-slate-800 text-slate-300 border border-slate-700'
-              }`}>
-                Confidence: {investigation.ai_analysis?.confidence || 'medium'}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-[11px] px-2.5 py-0.5 rounded font-mono font-bold ${
+                  investigation.analysis_status === 'success' ? 'bg-indigo-950 text-indigo-300 border border-indigo-800' : 'bg-slate-800 text-slate-300'
+                }`}>
+                  analysis: {investigation.analysis_status || 'success'}
+                </span>
+                <span className={`text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider ${
+                  investigation.ai_analysis?.confidence === 'high' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                  investigation.ai_analysis?.confidence === 'medium' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                  'bg-slate-800 text-slate-300 border border-slate-700'
+                }`}>
+                  Confidence: {investigation.ai_analysis?.confidence || 'medium'}
+                </span>
+              </div>
             </div>
 
             {/* RECOMMENDED ACTION HIGHLIGHT BOX */}
@@ -388,12 +556,14 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                 <HelpCircle className="w-4 h-4 text-indigo-400" /> Why this recommendation?
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
-                {investigation.recall_status === 'failed' || investigation.recall_source === 'hindsight_error' || investigation.recall_source === 'sqlite_fallback' ? (
+                {investigation.memory_status === 'unavailable' ? (
                   `Hindsight memory service was unavailable or unconfigured during this investigation. Analysis proceeded using current incident symptoms (${incident.symptoms}) and general SRE troubleshooting knowledge without historical vector memory context.`
-                ) : investigation.recall_status === 'empty' || investigation.similar_historical_incidents?.length === 0 ? (
-                  `No matching historical memories were retrieved from Hindsight for this incident query. Groq AI synthesized this recommendation based strictly on current incident symptoms (${incident.symptoms}) and general SRE/DevOps troubleshooting best practices.`
+                ) : investigation.memory_status === 'sqlite_fallback' ? (
+                  `Hindsight vector memory was unconfigured or returned no direct vector matches. Groq AI grounded its reasoning in ${investigation.similar_historical_incidents?.length || 0} relevant resolved incidents retrieved directly from the database fallback.`
+                ) : investigation.memory_status === 'empty' || investigation.similar_historical_incidents?.length === 0 ? (
+                  `No unique prior historical memories were retrieved from Hindsight or database fallback for this incident query. Groq AI synthesized this recommendation based strictly on current incident symptoms (${incident.symptoms}) and general SRE/DevOps troubleshooting best practices.`
                 ) : (
-                  `This recommendation was synthesized by Groq AI by grounding its reasoning in ${investigation.similar_historical_incidents.length} recalled historical incident memory${investigation.similar_historical_incidents.length > 1 ? 'ies' : ''} from Hindsight. MemoryOps matched observed symptoms (${incident.symptoms}) against past resolved outages to propose evidence-backed remediation steps.`
+                  `This recommendation was synthesized by Groq AI by grounding its reasoning in ${investigation.similar_historical_incidents.length} unique, non-self historical incident memories recalled from Hindsight. MemoryOps matched observed symptoms (${incident.symptoms}) against past resolved outages to propose evidence-backed remediation steps.`
                 )}
               </p>
 
@@ -406,7 +576,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                   <div className="space-y-1.5">
                     {investigation.ai_analysis.supporting_historical_incidents.map((evidence, idx) => (
                       <div key={idx} className="bg-indigo-950/40 border border-indigo-800/40 p-2.5 rounded text-xs text-indigo-200 font-mono">
-                        ✓ {evidence}
+                        ✓ {typeof evidence === 'string' ? evidence : JSON.stringify(evidence)}
                       </div>
                     ))}
                   </div>
@@ -426,7 +596,7 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
             </h3>
 
             <p className="text-xs text-slate-400">
-              Documenting the root cause and resolution will retain this experience into Hindsight persistent memory for future incidents to recall.
+              Documenting the verified root cause, resolution steps, and post-mortem will retain this operational experience into Hindsight persistent memory.
             </p>
 
             <form onSubmit={handleResolveSubmit} className="space-y-4 text-xs">
@@ -452,6 +622,17 @@ export default function IncidentInvestigation({ incidentId, incidents, onSelectI
                   onChange={(e) => setResolutionInput(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
                   required
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Post-Mortem Takeaways</label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Connection pool threshold alerting at 80% capacity added to Prometheus metrics."
+                  value={postMortemInput}
+                  onChange={(e) => setPostMortemInput(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
                 />
               </div>
 

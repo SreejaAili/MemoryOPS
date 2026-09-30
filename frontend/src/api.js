@@ -51,7 +51,7 @@ export async function createIncident(data) {
 }
 
 export async function resolveIncident(id, resolveData) {
-  const res = await fetch(`${API_BASE}/api/incidents/${id}/resolve`, {
+  const res = await fetch(`${API_BASE}/api/v1/incidents/${id}/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(resolveData),
@@ -63,8 +63,20 @@ export async function resolveIncident(id, resolveData) {
   return res.json();
 }
 
+export async function retainIncident(id) {
+  const res = await fetch(`${API_BASE}/api/v1/incidents/${id}/retain`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || `Failed to retain incident memory (${res.status})`);
+  }
+  return res.json();
+}
+
 export async function analyzeIncident(id) {
-  const res = await fetch(`${API_BASE}/api/incidents/${id}/analyze`, {
+  const res = await fetch(`${API_BASE}/api/v1/incidents/${id}/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });

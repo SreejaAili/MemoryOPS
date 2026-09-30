@@ -1,4 +1,4 @@
-# MEMORYOPS
+# MemoryOps
 
 > **AI Incident Response That Learns From Every Production Incident**
 
@@ -197,18 +197,19 @@ MemoryOps uses Groq's high-speed inference engine (`openai/gpt-oss-20b` model) a
 
 ---
 
-## 13. Setup Instructions
+## 13. Setup & Deployment Instructions
 
-### Prerequisites
+### Local Development Setup
+#### Prerequisites
 - Python 3.10+
 - Node.js v18+ & npm
 
-### 1. Repository Clone & Environment Setup
+#### 1. Repository Clone & Environment Setup
 ```bash
 cp .env.example .env
 ```
 
-### 2. Backend Installation & Run
+#### 2. Backend Installation & Run
 ```bash
 cd backend
 pip install -r requirements.txt
@@ -216,13 +217,39 @@ uvicorn app.main:app --reload --port 8000
 ```
 Backend API will run at `http://localhost:8000`. API docs available at `http://localhost:8000/docs`.
 
-### 3. Frontend Installation & Run
+#### 3. Frontend Installation & Run
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 Frontend UI will run at `http://localhost:5173`.
+
+---
+
+### Production Deployment Options
+
+#### Option A: Docker Compose (Recommended for Containerized Environments)
+Deploy both the FastAPI backend and Nginx frontend in unified container stacks:
+```bash
+# Set environment variables (optional)
+export GROQ_API_KEY="your-groq-key"
+export HINDSIGHT_API_KEY="your-hindsight-key"
+
+# Build and start services
+docker-compose up --build -d
+```
+- Frontend UI: `http://localhost:5173`
+- Backend API: `http://localhost:8000`
+
+#### Option B: Render Blueprint Deployment
+Deploy directly to Render using the provided `render.yaml` blueprint:
+1. Connect your repository to Render.
+2. Select **New > Blueprint**.
+3. Render automatically provisions:
+   - `memoryops-backend`: Python Web Service running FastAPI.
+   - `memoryops-frontend`: Static Site serving React bundle.
+4. Set `GROQ_API_KEY` and `HINDSIGHT_API_KEY` in the Render dashboard environment configuration.
 
 ---
 

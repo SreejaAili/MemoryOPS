@@ -2,34 +2,42 @@
 
 Picture the 3 a.m. version of this. An alert fires, you open your incident response tool, and the assistant says: *"This looks like INC-214: connection pool exhaustion, fixed by raising max_connections."* You go looking for INC-214 in your issue tracker. It doesn't exist.
 
-That failure mode is why I built MemoryOps. To be clear, INC-214 is an illustrative example of an LLM hallucination, not a captured output: my seed data ends at INC-116, so any citation of INC-214 is invented. During an outage, a fabricated citation is worse than a generic answer because a citation reads like evidence. You either burn minutes verifying it, or you trust it and apply a fix that was never tested anywhere.
+That failure mode is why I built MemoryOps. To be clear, INC-214 is a hypothetical example of an LLM hallucination, not a captured model response: seed data in this repository spans INC-101 through INC-116, so any citation of INC-214 is invented. During an outage, a fabricated citation is worse than a generic answer because a citation reads like verified evidence. You either burn minutes verifying it, or you trust it and apply a fix that was never tested.
 
-I reduced this risk by building persistent memory into the incident lifecycle. Here is how the engineering actually works.
+I reduced this risk by building persistent operational memory into the incident response lifecycle. Here is how the architecture and implementation work.
 
-## What MemoryOps Does
+---
 
-MemoryOps is an AI-powered incident response platform for DevOps and SRE teams. The frontend is built with React, Vite, and Tailwind CSS (providing Dashboard, Incident Creation, Investigation, and Memory Explorer views). The backend is FastAPI with SQLAlchemy over SQLite as the system of record for live incidents.
+## 1. What MemoryOps Does
+
+MemoryOps is an AI-powered incident response platform for DevOps and SRE teams. The frontend is built with React 19, Vite, and Tailwind CSS (providing Dashboard, Incident Creation, Investigation, and Memory Explorer views). The backend is FastAPI with SQLAlchemy over SQLite (`data/incidentiq.db`) as the system of record for live incident records.
 
 Hindsight acts as the long-term persistent memory layer for resolved incident learnings, while Groq Cloud LLM (`openai/gpt-oss-20b`) serves as the AI reasoning engine. Nothing executes actions autonomously; the human engineer remains in full control.
 
 ```
 React UI ─► FastAPI ─► SQLite     (incidents, ai_recommendation)
               ├──────► Hindsight  (RETAIN on resolve, RECALL on analyze, REFLECT)
-              └──────► Groq LLM   (current incident + recalled text)
+              └──────► Groq LLM   (current incident + recalled memories)
 ```
 
-![MemoryOps system architecture and dashboard](images/architecture.png)
-*MemoryOps dashboard showing live incidents, platform status, and system operations.*
+![MemoryOps system architecture](images/architecture.png)
+*MemoryOps system architecture showing the React frontend, FastAPI backend, SQLite database of record, Hindsight persistent memory layer, and Groq LLM reasoning engine.*
 
-The workflow begins when an engineer declares an incident. Navigating to the investigation page invokes `POST /api/v1/incidents/{id}/analyze`. The backend recalls relevant past incidents from Hindsight, passes them alongside current symptoms to Groq LLM, and presents evidence-backed recommendations. When the incident is resolved, its learnings are stored back into Hindsight memory.
+The workflow begins when an engineer declares an incident via `POST /api/v1/incidents`. Navigating to the investigation page invokes `POST /api/v1/incidents/{incident_id}/analyze`. The backend recalls relevant past incidents from Hindsight, passes them alongside current symptoms to Groq LLM, and presents evidence-backed recommendations. When the incident is resolved via `POST /api/v1/incidents/{incident_id}/resolve`, its verified learnings are retained in Hindsight.
 
-## The Decision: Remember Resolved Experience, Not Raw Logs
+---
 
-Instead of clogging LLM context windows with unstructured log streams, MemoryOps uses [Hindsight](https://hindsight.vectorize.io/) to carry experience across sessions. SQLite answers *"what is happening now,"* while Hindsight answers *"what did we learn last time."*
+## 2. Hindsight Memory Lifecycle: RETAIN, RECALL, and REFLECT
 
-### RETAIN Runs on Incident Resolution
+Instead of passing massive unstructured log streams to an LLM, MemoryOps uses [Hindsight](https://hindsight.vectorize.io/) to store structured experience documents. SQLite answers *"what is happening now,"* while Hindsight answers *"what did we learn from past outages."*
 
-When an incident is resolved via `POST /api/v1/incidents/{id}/resolve`, `HindsightService.aretain_incident()` formats a structured memory document containing `id`, `service`, `error`, `symptoms`, `severity`, `root_cause`, and `resolution`:
+```
+Incident Created ──► Investigation ──► Root Cause & Resolution ──► Hindsight RETAIN ──► Future RECALL
+```
+
+### RETAIN Runs Only on Verified Resolution
+
+An incident is never retained when merely created, during unresolved investigation, or from AI guesses. When an engineer resolves an incident, `HindsightService.aretain_incident()` stores a complete experience document containing ID, service, error, symptoms, severity, root cause, resolution steps, and post-mortem:
 
 ```python
 response = await client.aretain(
@@ -41,57 +49,72 @@ response = await client.aretain(
 )
 ```
 
-The incident ID serves as a stable document anchor. To prevent duplicate retention calls, the `Incident` database model tracks a `memory_retained` boolean flag. This flag is flipped to `True` only after Hindsight confirms a successful retain operation.
+To guarantee idempotent retention, `document_id` is set deterministically to `incident.id` (`INC-101`). The `Incident` database model tracks a `memory_retained` boolean flag, which is flipped to `True` only after Hindsight confirms successful retention.
 
-### RECALL Runs on Incident Investigation
+### RECALL Runs During Incident Investigation
 
-When an investigation is triggered, MemoryOps forms a semantic search query from the incident's service, primary error, and observed symptoms:
+When an investigation is triggered, MemoryOps constructs a semantic search query from the current incident:
 
 ```python
 recall_query = f"Service: {incident.service} | Error: {incident.error} | Symptoms: {incident.symptoms}"
 recalled = await hindsight_service.arecall_memories(query=recall_query, max_tokens=2048)
 ```
 
-The router limits results to the top 5 memories and parses them using `parse_memory_item()`. In `ai_service.py`, these memories are passed directly to the LLM context prompt as grounded evidence.
+The router parses returned memories using `parse_memory_item()` and supplies them as grounded context to Groq.
 
-MemoryOps also implements `POST /api/v1/incidents/reflect` and a Memory Explorer UI tab to synthesize cross-incident patterns across historical outages.
+### REFLECT Synthesizes Patterns
+
+MemoryOps also provides `POST /api/v1/incidents/reflect` and a Memory Explorer tab so engineers can query cross-incident patterns across historical outages.
 
 ![MemoryOps memory explorer view](images/memory-explorer.png)
-*Memory Explorer interface allowing direct Hindsight RECALL and REFLECT pattern queries.*
+*Memory Explorer view demonstrating direct Hindsight RECALL vector search and REFLECT pattern synthesis.*
 
-## Separating Evidence from Analysis
+---
+
+## 3. Separating Evidence from Analysis
 
 In the investigation API response (`IncidentInvestigationResponse`), historical evidence and AI reasoning are kept strictly separate:
-- `similar_historical_incidents`, `previous_root_causes`, and `previous_resolutions` are populated by backend code directly from Hindsight recalled memories or SQLite records.
-- `ai_analysis` contains the structured JSON output returned by Groq LLM.
+- `similar_historical_incidents`: Populated directly from Hindsight recalled memories.
+- `ai_analysis`: Contains the structured JSON output returned by Groq LLM.
 
-The UI renders these inputs as distinct visual pipeline stages so the engineer can easily distinguish raw historical facts from AI recommendations.
+The UI renders these inputs as distinct pipeline stages so the engineer can evaluate raw facts independently from LLM reasoning.
 
 ![MemoryOps investigation view](images/investigation-view.png)
-*The investigation view separates retrieved historical evidence from AI-generated analysis.*
+*MemoryOps investigation view displaying the step-by-step pipeline, explicit memory status banner, recalled historical memories, and Groq AI recommendation.*
 
-The system prompt enforces strict anti-hallucination guardrails:
+---
 
-```
-2. NEVER invent or fabricate historical incidents or incident IDs. Only reference historical incidents that are explicitly present in the provided RECALLED HISTORICAL MEMORIES.
-3. If no relevant historical incidents exist or match, explicitly state that no historical incidents were found in Hindsight and base your analysis solely on general DevOps best practices.
-```
+## 4. Explicit Memory Status: No Fake Fallback Memories
 
-## Before and After Example
+MemoryOps explicitly exposes three distinct memory states in the API and UI:
 
-**Before (illustrative hypothetical hallucination):**
-> Probable cause: Connection pool exhaustion. Matches INC-214, resolved by increasing max_connections to 100.
+1. **`memory_status = "ok"`**: Hindsight successfully recalled relevant memories (`✓ Historical Memory Used`).
+2. **`memory_status = "empty"`**: Hindsight searched but found no matching memories (`○ No Relevant Historical Memory`).
+3. **`memory_status = "unavailable"`**: Hindsight service was offline or unconfigured (`⚠ Historical Memory Unavailable`).
 
-**Stored (real seed data in `seed.py` for INC-101):**
-- *Root Cause:* "Connection pool exhaustion due to leaked unclosed DB sessions during traffic surge"
-- *Resolution:* "Increased connection pool size from 20 to 100 and deployed hotfix for session leak"
+If Hindsight is unavailable, MemoryOps **never** queries SQLite incident records and labels them as Hindsight memories. Local SQLite records are system-of-record entries and must never be disguised as vector-recalled memories.
 
-**After (verified response structure from `test_ai_service.py`):**
+---
+
+## 5. Before-and-After Example
+
+### Before (Hypothetical LLM Hallucination)
+> *Probable cause:* Connection pool exhaustion. Matches INC-214, resolved by increasing max_connections to 100.
+
+### Stored Memory (Real Seed Data for INC-101 in `seed.py`)
+- **Service:** Payment API
+- **Error:** Database connection timeout
+- **Symptoms:** High HTTP 504 Gateway Timeouts on /v1/charge endpoint, elevated API latency
+- **Root Cause:** Connection pool exhaustion due to leaked unclosed DB sessions during traffic surge
+- **Resolution:** Increased connection pool size from 20 to 100 and deployed hotfix for session leak
+- **Post-mortem:** Connection pool configuration was insufficient for observed traffic surges. Added automated connection pool utilization alerting at 80% capacity.
+
+### After (Verified Integration Test Response Structure)
 
 ```json
 {
   "probable_root_cause": "Database connection pool exhaustion",
-  "recommended_action": "Increase max_connections parameter from 20 to 100",
+  "recommended_action": "Increase max_connections parameter from 20 to 100 and deploy session leak hotfix",
   "confidence": "high",
   "reasoning": "INC-101 historical incident showed identical Gateway Timeout symptoms and was resolved by expanding the pool.",
   "supporting_historical_incidents": [
@@ -100,17 +123,24 @@ The system prompt enforces strict anti-hallucination guardrails:
 }
 ```
 
-## Graceful Fallback Handling
+System prompt instructions direct Groq to cite only actual recalled memories. However, prompt instructions are guidance rather than mathematical guarantees; application-side validation ensures that missing memories are explicitly reported.
 
-When external API keys or Hindsight services are unavailable, MemoryOps degrades gracefully without crashing or fabricating memories.
+---
 
-If Hindsight is offline or returns an error (e.g. HTTP 402 Insufficient Credits), the backend falls back to querying resolved incidents stored in SQLite. If Groq LLM is unconfigured, `_fallback_analysis()` applies rule-based heuristic analysis and explicitly sets confidence to `low`.
+## 6. Failure Handling and Graceful Degradation
+
+When external services fail, MemoryOps degrades gracefully without crashing.
+
+If Hindsight returns an error or HTTP 402 insufficient credits, the backend sets `memory_status = "unavailable"`, clears `similar_historical_incidents`, and continues investigation using current incident details alone. If Groq LLM is unconfigured, `_fallback_analysis()` applies rule-based heuristic analysis and sets `analysis_status = "fallback"` with `confidence = "low"`.
 
 ![MemoryOps graceful degradation](images/graceful-degradation.png)
-*MemoryOps continues incident investigation and displays low-confidence fallback reasoning when Hindsight or Groq returns API authentication or quota errors.*
+*MemoryOps graceful degradation view displaying explicit memory status warning and low-confidence fallback heuristic reasoning when external services are unavailable.*
 
-## Engineering Lessons & Limitations
+---
 
-1. **Schema Separation Over Prompt Trust:** Prompt instructions reduce hallucinations, but programmatic validation of cited incident IDs against recalled sets is necessary for absolute enforcement.
-2. **Degraded Mode Must Look Degraded:** When falling back to SQLite, the UI and API explicitly communicate that heuristic analysis was used.
-3. **Idempotent Retention:** Tracking a `memory_retained` flag in the primary database prevents duplicate memory entries in Hindsight upon repeated resolution calls.
+## 7. Engineering Lessons and Limitations
+
+1. **Persistent Memory vs Weight Fine-Tuning**: "Learning" in MemoryOps refers to persistent operational memory through Hindsight RAG, not altering LLM weights.
+2. **System of Record vs Memory Bank**: SQLite records state ("what happened"), while Hindsight stores reusable operational experience ("what worked").
+3. **Explicit State Over Silent Fallbacks**: Disguising dependency failures with mock memories destroys user trust during active production outages.
+4. **Idempotent Retention**: Using deterministic document IDs (`document_id = incident.id`) ensures retries do not pollute vector banks with duplicate entries.

@@ -12,6 +12,7 @@ class Incident(Base):
     severity = Column(String, nullable=False, default="medium")
     root_cause = Column(Text, nullable=True)
     resolution = Column(Text, nullable=True)
+    post_mortem = Column(Text, nullable=True)
     outcome = Column(String, nullable=False, default="Open")
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     resolved_at = Column(DateTime, nullable=True)

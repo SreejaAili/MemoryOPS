@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Brain, PlusCircle, LayoutDashboard, Search, Cpu } from 'lucide-react';
+import { Activity, Brain, PlusCircle, LayoutDashboard, Search, Cpu, Home, ArrowRight } from 'lucide-react';
+import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
 import CreateIncident from './components/CreateIncident';
 import IncidentInvestigation from './components/IncidentInvestigation';
@@ -7,7 +8,7 @@ import MemoryExplorer from './components/MemoryExplorer';
 import { fetchIncidents } from './api';
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [currentPage, setCurrentPage] = useState('landing');
   const [incidents, setIncidents] = useState([]);
   const [selectedIncidentId, setSelectedIncidentId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -35,71 +36,105 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col selection:bg-blue-600 selection:text-white">
       {/* Navigation Header */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40 px-6 py-3.5 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-indigo-600/20 text-indigo-400 rounded-lg border border-indigo-500/30">
+      <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
+        <div
+          onClick={() => setCurrentPage('landing')}
+          className="flex items-center space-x-3 cursor-pointer group"
+        >
+          <div className="p-2 bg-blue-600/20 text-blue-400 rounded-lg border border-blue-500/30 group-hover:scale-105 transition">
             <Activity className="h-5 w-5" />
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-              MEMORYOPS <span className="text-[10px] font-mono bg-indigo-950 text-indigo-300 border border-indigo-800 px-2 py-0.5 rounded">v0.1.0</span>
+              MEMORYOPS <span className="text-[10px] font-mono bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded">v0.1.0</span>
             </h1>
             <p className="text-[11px] text-slate-400">AI Incident Response That Learns From Every Production Incident</p>
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <nav className="flex items-center space-x-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
-          <button
-            onClick={() => setCurrentPage('dashboard')}
-            className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-              currentPage === 'dashboard'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <LayoutDashboard className="w-3.5 h-3.5" /> Dashboard
-          </button>
+        <div className="flex items-center gap-3">
+          <nav className="flex items-center space-x-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+            <button
+              onClick={() => setCurrentPage('landing')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                currentPage === 'landing'
+                  ? 'bg-blue-600 text-white shadow-sm font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Home className="w-3.5 h-3.5" /> Home
+            </button>
 
-          <button
-            onClick={() => setCurrentPage('create')}
-            className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-              currentPage === 'create'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <PlusCircle className="w-3.5 h-3.5" /> Create Incident
-          </button>
+            <button
+              onClick={() => setCurrentPage('dashboard')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                currentPage === 'dashboard'
+                  ? 'bg-blue-600 text-white shadow-sm font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <LayoutDashboard className="w-3.5 h-3.5" /> Dashboard
+            </button>
 
-          <button
-            onClick={() => setCurrentPage('investigate')}
-            className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-              currentPage === 'investigate'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Cpu className="w-3.5 h-3.5" /> Investigation
-          </button>
+            <button
+              onClick={() => setCurrentPage('create')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                currentPage === 'create'
+                  ? 'bg-blue-600 text-white shadow-sm font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <PlusCircle className="w-3.5 h-3.5" /> Create Incident
+            </button>
 
-          <button
-            onClick={() => setCurrentPage('memory')}
-            className={`px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
-              currentPage === 'memory'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Brain className="w-3.5 h-3.5" /> Memory
-          </button>
-        </nav>
+            <button
+              onClick={() => setCurrentPage('investigate')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                currentPage === 'investigate'
+                  ? 'bg-blue-600 text-white shadow-sm font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Cpu className="w-3.5 h-3.5" /> Investigation
+            </button>
+
+            <button
+              onClick={() => setCurrentPage('memory')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                currentPage === 'memory'
+                  ? 'bg-blue-600 text-white shadow-sm font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Brain className="w-3.5 h-3.5" /> Memory
+            </button>
+          </nav>
+
+          {/* Open Dashboard CTA Button */}
+          {currentPage === 'landing' && (
+            <button
+              onClick={() => setCurrentPage('dashboard')}
+              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition shadow-md shadow-blue-600/20 flex items-center gap-1.5 hidden md:flex"
+            >
+              Open Dashboard <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-6">
+        {currentPage === 'landing' && (
+          <LandingPage
+            incidents={incidents}
+            onNavigate={(page) => setCurrentPage(page)}
+            onSelectIncident={(id) => setSelectedIncidentId(id)}
+          />
+        )}
+
         {currentPage === 'dashboard' && (
           <Dashboard
             incidents={incidents}
@@ -133,7 +168,7 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3.5 text-center text-xs text-slate-500">
+      <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-4 text-center text-xs text-slate-500">
         MemoryOps &copy; {new Date().getFullYear()} — SRE & DevOps Incident Management Platform (FastAPI + Hindsight + Groq)
       </footer>
     </div>

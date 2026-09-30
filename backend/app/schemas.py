@@ -1,4 +1,4 @@
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Union
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 
@@ -9,6 +9,7 @@ class IncidentBase(BaseModel):
     severity: str = Field(default="medium", description="Severity level (e.g., low, medium, high, critical)")
     root_cause: Optional[str] = Field(default=None, description="Root cause of the incident")
     resolution: Optional[str] = Field(default=None, description="Steps taken to resolve the incident")
+    post_mortem: Optional[str] = Field(default=None, description="Post-mortem analysis and key takeaways")
     outcome: str = Field(default="Open", description="Current status/outcome (e.g., Open, Investigating, Resolved)")
 
 class IncidentCreate(IncidentBase):
@@ -21,11 +22,13 @@ class IncidentUpdate(BaseModel):
     severity: Optional[str] = None
     root_cause: Optional[str] = None
     resolution: Optional[str] = None
+    post_mortem: Optional[str] = None
     outcome: Optional[str] = None
 
 class IncidentResolve(BaseModel):
     root_cause: Optional[str] = Field(default=None, description="Root cause identified during resolution")
     resolution: str = Field(..., min_length=1, description="Resolution steps taken")
+    post_mortem: Optional[str] = Field(default=None, description="Post-mortem analysis and key takeaways")
     outcome: str = Field(default="Resolved", description="Outcome status upon resolution")
 
 class IncidentResponse(IncidentBase):
@@ -57,13 +60,16 @@ class IncidentAnalysisRequest(BaseModel):
 
 class IncidentAnalysisResponse(BaseModel):
     success: bool
+    analysis_status: str = Field(default="success", description="AI analysis status: success or fallback")
+    memory_status: str = Field(default="ok", description="Hindsight memory status: ok, empty, or unavailable")
+    message: Optional[str] = Field(default=None, description="Informative status message")
     service: str
     error: str
     probable_root_cause: str
     recommended_action: str
     confidence: str
     reasoning: str
-    supporting_historical_incidents: List[str]
+    supporting_historical_incidents: List[Any] = Field(default_factory=list)
     recalled_memories_used: Optional[Any] = None
     error_detail: Optional[str] = None
 
@@ -75,5 +81,9 @@ class IncidentInvestigationResponse(BaseModel):
     ai_analysis: Dict[str, Any]
     recommended_action: str
     explanation: str
-    recall_status: str = Field(default="failed", description="Status of recall: success, empty, failed")
-    recall_source: str = Field(default="sqlite_fallback", description="Source of recall data")
+    analysis_status: str = Field(default="success", description="AI analysis status: success or fallback")
+    memory_status: str = Field(default="ok", description="Hindsight memory status: ok, empty, or unavailable")
+    message: Optional[str] = Field(default=None, description="Informative status message")
+    recalled_memories_details: List[Dict[str, Any]] = Field(default_factory=list)
+    recall_status: str = Field(default="failed", description="Legacy status of recall: success, empty, failed")
+    recall_source: str = Field(default="sqlite_fallback", description="Legacy source of recall data")

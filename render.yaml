@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: memoryops-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: DATABASE_URL
+        value: "sqlite:///../data/incidentiq.db"
+      - key: GROQ_MODEL
+        value: "llama-3.1-8b-instant"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: HINDSIGHT_API_URL
+        value: "https://api.hindsight.vectorize.io"
+      - key: HINDSIGHT_API_KEY
+        sync: false
+      - key: HINDSIGHT_BANK_ID
+        value: "memoryops"
+      - key: CORS_ORIGINS
+        value: "https://memoryops-frontend.onrender.com"
+
+  - type: web
+    name: memoryops-frontend
+    env: static
+    region: oregon
+    plan: free
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: "./frontend/dist"
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: "https://memoryops-backend.onrender.com"
+    routes:
+      - type: rewrite
+        source: "/*"
+        destination: "/index.html"

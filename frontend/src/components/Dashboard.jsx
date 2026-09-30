@@ -7,18 +7,19 @@ import {
   PlusCircle,
   Search,
   ArrowRight,
-  Server,
   ShieldCheck,
   Activity,
-  Clock
+  RotateCcw
 } from 'lucide-react';
 
 export default function Dashboard({ incidents, loading, error, onNavigate, onSelectIncident }) {
   const activeIncidents = incidents.filter(i => i.outcome.toLowerCase() !== 'resolved');
   const resolvedIncidents = incidents.filter(i => i.outcome.toLowerCase() === 'resolved');
   const totalIncidents = incidents.length;
-  // Remembered incidents in Hindsight (resolved incidents with root causes)
-  const rememberedCount = resolvedIncidents.filter(i => i.root_cause || i.resolution).length;
+
+  // Verified memory retention counts
+  const retainedCount = incidents.filter(i => i.memory_retained).length;
+  const pendingRetentionCount = resolvedIncidents.filter(i => !i.memory_retained).length;
 
   return (
     <div className="space-y-6">
@@ -56,32 +57,34 @@ export default function Dashboard({ incidents, loading, error, onNavigate, onSel
           </div>
         </div>
 
-        {/* Total Incidents */}
+        {/* Retained Historical Memories */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Incidents</span>
-            <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg border border-indigo-500/20">
-              <List className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline justify-between">
-            <span className="text-3xl font-bold text-white">{totalIncidents}</span>
-            <span className="text-xs text-slate-400">Recorded</span>
-          </div>
-        </div>
-
-        {/* Remembered Incidents */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Remembered Incidents</span>
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Historical Memories</span>
             <div className="p-2 bg-purple-500/10 text-purple-400 rounded-lg border border-purple-500/20">
               <Brain className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-3 flex items-baseline justify-between">
-            <span className="text-3xl font-bold text-white">{rememberedCount}</span>
+            <span className="text-3xl font-bold text-white">{retainedCount}</span>
             <span className="text-xs text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
-              Hindsight Memory
+              Retained in Hindsight
+            </span>
+          </div>
+        </div>
+
+        {/* Pending Memory Retention */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Pending Retention</span>
+            <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg border border-amber-500/20">
+              <RotateCcw className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline justify-between">
+            <span className="text-3xl font-bold text-white">{pendingRetentionCount}</span>
+            <span className="text-xs text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+              Retry Available
             </span>
           </div>
         </div>

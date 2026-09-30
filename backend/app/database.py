@@ -27,9 +27,13 @@ def run_migrations():
             # Check columns in incidents table
             result = conn.execute(text("PRAGMA table_info(incidents)"))
             columns = [row[1] for row in result.fetchall()]
-            if columns and "ai_recommendation" not in columns:
-                conn.execute(text("ALTER TABLE incidents ADD COLUMN ai_recommendation TEXT"))
-                conn.commit()
+            if columns:
+                if "ai_recommendation" not in columns:
+                    conn.execute(text("ALTER TABLE incidents ADD COLUMN ai_recommendation TEXT"))
+                    conn.commit()
+                if "post_mortem" not in columns:
+                    conn.execute(text("ALTER TABLE incidents ADD COLUMN post_mortem TEXT"))
+                    conn.commit()
     except Exception as e:
         print(f"Migration check info: {e}")
 
